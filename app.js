@@ -921,6 +921,7 @@ function toggle_capture()
 }
 
 
+
 async function Load() {
     console.log("================================================");
     console.log("APPLICATION LOADING...");
@@ -940,7 +941,12 @@ async function Load() {
     engine = new BABYLON.Engine(canvas, true);
     scene = await CreateScene(engine, canvas);
 
-    face_mesh = CreateFaceMesh();   
+    // Create the face mesh
+    face_mesh = CreateFaceMesh();
+
+    // Pull the forehead upward (executed in real-time later)
+    pullForeheadInRealTime();
+
     unwrap_mesh = CreateFaceUnwrap();
     unwrap_mesh.setEnabled(false);
 
@@ -956,46 +962,6 @@ async function Load() {
         blurKernelSize: 64
     });
     gl.intensity = 0.5;
-
-    // Load the GLB model
-    BABYLON.SceneLoader.ImportMesh("", "models/", "model(25).glb", scene, function (meshes) {
-        meshes.forEach(function (mesh) {
-            // Reset position to ensure it's visible in the scene
-            mesh.position = new BABYLON.Vector3(0, -1.4, 0); // Set to origin or adjust to fit the camera view
-
-            // Add rotation
-            mesh.rotation = new BABYLON.Vector3(0, 4.7, 0); // Reset rotation to start with
-
-            // Increase the size of the model
-            mesh.scaling = new BABYLON.Vector3(2.5, 2.5, 2.5); // Increase size moderately
-        });
-
-        // Remove animations from the model
-        scene.animationGroups.forEach(animationGroup => {
-            animationGroup.stop();   // Stop the animation
-            animationGroup.dispose(); // Dispose of the animation group
-        });
-
-        // Apply UV shader to the face mesh (assuming the first mesh is the face mesh)
-        const faceMesh = meshes[0]; // You may need to adjust this depending on your model
-        applyUVShaderToFaceMesh(faceMesh, scene);
-
-        // Set up a button to extract and save the UV texture
-        const advancedTexture = BABYLON.GUI.AdvancedDynamicTexture.CreateFullscreenUI("ui");
-        const btn_save_uv = BABYLON.GUI.Button.CreateSimpleButton("btn_save_uv", "Save UV Texture");
-        btn_save_uv.verticalAlignment = BABYLON.GUI.Control.VERTICAL_ALIGNMENT_TOP;
-        btn_save_uv.horizontalAlignment = BABYLON.GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
-        btn_save_uv.topInPixels = 200;
-        btn_save_uv.leftInPixels = 8;
-        btn_save_uv.width = "150px";
-        btn_save_uv.height = "80px";
-        btn_save_uv.color = "white";
-        btn_save_uv.background = "gray";
-        btn_save_uv.onPointerUpObservable.add(function () {
-            extractUVTexture(scene, faceMesh);
-        });
-        advancedTexture.addControl(btn_save_uv);
-    });
 
     // Start AI detection if enabled
     if (ai_detection_mode > 0) {
@@ -1026,16 +992,33 @@ async function Load() {
         toggle_capture();
 
         // Resize face mesh
-        face_mesh.scaling = new BABYLON.Vector3(0.245, 0.212, 0.2);
+        face_mesh.scaling = new BABYLON.Vector3(0.071, 0.0696, 0.086);
 
         // Position face mesh
-        face_mesh.position = new BABYLON.Vector3(0, 6.12342, -0.07);
+        face_mesh.position = new BABYLON.Vector3(0, 5.763, -0.1585);
 
-         // Add rotation
-        face_mesh.rotation = new BABYLON.Vector3(-0.04,-0.13, 0); // Reset rotation to start with
+        // Add rotation to face mesh
+        face_mesh.rotation = new BABYLON.Vector3(0, 3.2, 0);
 
-        // Load the human model into the scene using a URL
-        loadHumanModel(scene);
+        // Load the human model (model(26).glb) only after button is clicked
+        BABYLON.SceneLoader.ImportMesh("", "models/", "model(26).glb", scene, function (meshes) {
+            meshes.forEach(function (mesh) {
+                // Set position and rotation for model(26)
+                mesh.position = new BABYLON.Vector3(0, -1.4, 0);
+                mesh.rotation = new BABYLON.Vector3(0, 4.7, 0);
+                mesh.scaling = new BABYLON.Vector3(2.5, 2.5, 2.5);
+            });
+        });
+
+        // Load the pant model (pant.glb) only after button is clicked
+        BABYLON.SceneLoader.ImportMesh("", "models/", "", scene, function (meshes) {
+            meshes.forEach(function (mesh) {
+                // Set position, rotation, and scaling for pant model
+                mesh.position = new BABYLON.Vector3(0, -1.4, 0);  // Adjust as per the model's size
+                mesh.rotation = new BABYLON.Vector3(0, 4.7, 0);   // Same rotation as the model
+                mesh.scaling = new BABYLON.Vector3(2.5, 2.5, 2.5); // Adjust the size
+            });
+        });
     });
     advancedTexture.addControl(btn_freeze);
 
@@ -1062,86 +1045,59 @@ async function Load() {
     });
 }
 
-// Function to create a shader material that visualizes UVs
-function createUVShaderMaterial(scene) {
-    // Simple shader material for rendering UVs as colors
-    const uvShader = new BABYLON.ShaderMaterial("uvShader", scene, {
-        vertex: "uvShader",
-        fragment: "uvShader",
-    }, {
-        attributes: ["position", "normal", "uv"],
-        uniforms: ["worldViewProjection"]
+// Flag to ensure the pull only happens once
+let foreheadPulled = false;
+
+// Function to pull the forehead upward in real-time (but only once)
+function pullForeheadInRealTime() {
+    engine.runRenderLoop(() => {
+        if (ready && face_mesh && !foreheadPulled) {
+            pullForehead(face_mesh);
+            foreheadPulled = true; // Set the flag to stop pulling after the first modification
+        }
+    });
+}
+
+// Function to pull the center forehead vertices slightly upward
+function pullForehead(face_mesh) {
+    // Adjust these indices for actual forehead vertices
+    const foreheadIndices = [10, 338, 297, 332, 284]; 
+    
+    const centerForeheadIndex = 10; // Center of forehead
+
+    // Define subtle displacements for the center forehead (only Y-axis for upward movement)
+    const foreheadDisplacement = new BABYLON.Vector3(0, 0.03, 0); // Small upward expansion (Y-axis)
+
+    // Access the vertex data of the face mesh
+    let vertexData = face_mesh.getVerticesData(BABYLON.VertexBuffer.PositionKind);
+
+    // Iterate over the forehead indices and modify the Y position to pull the center forehead slightly upward
+    foreheadIndices.forEach(vertexIndex => {
+        // Modify Y-coordinate (forehead expansion)
+        vertexData[vertexIndex * 3 + 1] += foreheadDisplacement.y;
     });
 
-    uvShader.setShaderCode(`
-        precision highp float;
+    // Update the mesh with the new vertex positions
+    face_mesh.setVerticesData(BABYLON.VertexBuffer.PositionKind, vertexData);
 
-        // Varyings
-        varying vec2 vUV;
-
-        void main(void) {
-            gl_Position = vec4(position, 1.0);
-            vUV = uv;
-        }
-    `, BABYLON.ShaderMaterial.VertexShader);
-
-    uvShader.setShaderCode(`
-        precision highp float;
-
-        // Varyings
-        varying vec2 vUV;
-
-        void main(void) {
-            gl_FragColor = vec4(vUV, 0.0, 1.0);
-        }
-    `, BABYLON.ShaderMaterial.FragmentShader);
-
-    return uvShader;
-}
-
-// Apply the UV shader material to the face mesh
-function applyUVShaderToFaceMesh(faceMesh, scene) {
-    const uvShaderMaterial = createUVShaderMaterial(scene);
-    faceMesh.material = uvShaderMaterial;
-}
-
-// Extract UV texture and save it as an image
-function extractUVTexture(scene, faceMesh) {
-    const renderTargetSize = 1024;
-    const renderTarget = new BABYLON.RenderTargetTexture("uvTexture", { width: renderTargetSize, height: renderTargetSize }, scene);
-
-    renderTarget.renderList.push(faceMesh);
-
-    // Render the texture
-    renderTarget.onAfterRenderObservable.add(() => {
-        renderTarget.readPixels().then((pixels) => {
-            const canvas = document.createElement("canvas");
-            canvas.width = renderTargetSize;
-            canvas.height = renderTargetSize;
-            const context = canvas.getContext("2d");
-
-            const imageData = context.createImageData(renderTargetSize, renderTargetSize);
-            imageData.data.set(pixels);
-            context.putImageData(imageData, 0, 0);
-
-            // Save the texture as an image
-            const dataURL = canvas.toDataURL("image/png");
-            downloadImage(dataURL, "uv_texture.png");
-        });
+    // (Optional debug) Visualize the modified center forehead vertices
+    foreheadIndices.forEach(vertexIndex => {
+        let vertexPosition = new BABYLON.Vector3(
+            vertexData[vertexIndex * 3],
+            vertexData[vertexIndex * 3 + 1],
+            vertexData[vertexIndex * 3 + 2]
+        );
+        placeDebugMarker(scene, vertexPosition);
     });
-
-    scene.customRenderTargets.push(renderTarget);
-    renderTarget.render();
 }
 
-// Helper function to download the image
-function downloadImage(dataURL, filename) {
-    const link = document.createElement('a');
-    link.href = dataURL;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+// Debug function to visualize modified vertices
+function placeDebugMarker(scene, position) {
+    let sphere = BABYLON.MeshBuilder.CreateSphere("marker", { diameter: 0.05 }, scene);
+    sphere.position = position;
+    let material = new BABYLON.StandardMaterial("markerMat", scene);
+    material.diffuseColor = new BABYLON.Color3(1, 0, 0); // Red color for debugging
+    sphere.material = material;
 }
 
 
